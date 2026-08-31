@@ -28,14 +28,27 @@ const money = v => nf.format(Math.round(v * 100) / 100) + ' ' + (CUR[S.cur] || S
 const cat = id => [...S.cats.exp, ...S.cats.inc].find(c => c.id === id) || { n: 'Без категории', e: '❓', c: '#8395a7' };
 const esc = s => String(s).replace(/[<>&"]/g, m => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[m]));
 
-// "12+3.5-1" -> 14.5, без eval
+// "12+3×2" -> 18, без eval; × и ÷ считаются первыми
+const OPS = /[+\-×÷]/;
 function calcExpr(s) {
-  let total = 0, sign = 1, num = '';
-  for (const ch of String(s)) {
-    if (ch === '+' || ch === '-') { total += sign * (parseFloat(num) || 0); sign = ch === '+' ? 1 : -1; num = ''; }
-    else num += ch;
+  const tokens = String(s).match(/\d*\.?\d+|[+\-×÷]/g) || [];
+  const st = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t === '×' || t === '÷') {
+      const b = parseFloat(tokens[++i]);
+      if (isNaN(b)) break;
+      const a = st.pop() || 0;
+      st.push(t === '×' ? a * b : (b === 0 ? 0 : a / b));
+    } else st.push(OPS.test(t) ? t : parseFloat(t));
   }
-  return Math.round((total + sign * (parseFloat(num) || 0)) * 100) / 100;
+  let total = 0, sign = 1;
+  for (const x of st) {
+    if (x === '+') sign = 1;
+    else if (x === '-') sign = -1;
+    else total += sign * x;
+  }
+  return isFinite(total) ? Math.round(total * 100) / 100 : 0;
 }
 // p: '2026-08' | '2026' | 'all'
 const txIn = p => S.tx.filter(t => p === 'all' || t.date.startsWith(p));
@@ -68,8 +81,34 @@ function dayLabel(d) {
 }
 
 /* ---------- главная ---------- */
+const accBalance = id => (+(S.accounts.find(x => x.id === id) || {}).start || 0) +
+  S.tx.filter(t => t.acc === id).reduce((a, t) => a + (t.type === 'inc' ? t.amount : -t.amount), 0);
+
+let homeType = 'exp';
 function renderHome() {
   const m = today().slice(0, 7), a = agg(txIn(m));
+  $('#s-home').innerHTML = `
+    <div class="bal">
+      <div class="lbl">Общий баланс</div><div class="sum">${money(balance())}</div>
+      <div class="pair">
+        <div><span class="lbl">Доход, ${MON[+m.slice(5, 7) - 1].toLowerCase()}</span><b>+${money(a.inc)}</b></div>
+        <div><span class="lbl">Расход</span><b>−${money(a.exp)}</b></div>
+      </div>
+    </div>
+    <div class="seg" style="margin:12px 0 4px">
+      <button data-act="htype" data-v="exp" class="${homeType === 'exp' ? 'on' : ''}">Расход</button>
+      <button data-act="htype" data-v="inc" class="${homeType === 'inc' ? 'on' : ''}">Доход</button>
+    </div>
+    <div class="hint" style="text-align:center;padding:6px 0">Удерживайте иконку и перетащите на счёт</div>
+    <div class="grid4">${S.cats[homeType].map(c => `<div class="tile drag" data-kind="cat" data-id="${c.id}">
+        <div class="i" style="background:${c.c}22;color:${c.c}">${c.e}</div>${esc(c.n)}</div>`).join('')}</div>
+    ${budgetTop(m)}
+    <div class="h2">Операции</div>
+    <div class="card">${txRows() || '<div class="empty">Пока пусто.<br>Перетащите категорию на счёт</div>'}</div>
+    <div class="dock">${S.accounts.map(x => `<div class="wal drag" data-kind="acc" data-id="${x.id}">
+        <b>${esc(x.n)}</b><span>${money(accBalance(x.id))}</span></div>`).join('')}</div>`;
+}
+function txRows() {
   const list = [...S.tx].sort((x, y) => y.date < x.date ? -1 : y.date > x.date ? 1 : y.ts - x.ts).slice(0, 25);
   let rows = '', last = '';
   for (const t of list) {
@@ -84,17 +123,7 @@ function renderHome() {
       <div class="nm"><div>${esc(c.n)}</div><div class="hint">${esc(t.note || (acc ? acc.n : ''))}</div></div>
       <div class="amt" style="color:${t.type === 'inc' ? 'var(--green)' : 'var(--text)'}">${t.type === 'inc' ? '+' : '−'}${money(t.amount)}</div></div>`;
   }
-  $('#s-home').innerHTML = `
-    <div class="bal">
-      <div class="lbl">Общий баланс</div><div class="sum">${money(balance())}</div>
-      <div class="pair">
-        <div><span class="lbl">Доход, ${MON[+m.slice(5, 7) - 1].toLowerCase()}</span><b>+${money(a.inc)}</b></div>
-        <div><span class="lbl">Расход</span><b>−${money(a.exp)}</b></div>
-      </div>
-    </div>
-    ${budgetTop(m)}
-    <div class="h2">Операции</div>
-    <div class="card">${rows || '<div class="empty">Пока пусто.<br>Нажмите + чтобы добавить операцию</div>'}</div>`;
+  return rows;
 }
 function budgetTop(m) {
   const ids = Object.keys(S.budgets).filter(k => S.budgets[k] > 0);
@@ -228,10 +257,28 @@ function renderSettings() {
 
 /* ---------- шторка операции ---------- */
 let D = null;
-function openSheet(id) {
+const KEYS = ['1','2','3','÷','4','5','6','×','7','8','9','-','.','0','del','+'];
+const KEY_LABEL = { del: '⌫', '-': '−' };
+// нажатие клавиши -> новое выражение
+function applyKey(a, k) {
+  if (k === 'del') return a.slice(0, -1);
+  if (OPS.test(k)) return !a ? a : (OPS.test(a.slice(-1)) ? a.slice(0, -1) + k : a + k);
+  if (k === '.') {
+    if (/\.\d*$/.test(a.split(OPS).pop())) return a;                 // вторая точка в одном числе
+    return (!a || OPS.test(a.slice(-1)) ? a + '0' : a) + '.';        // ".5" -> "0.5"
+  }
+  return a + k;
+}
+function dispHTML() {
+  const expr = OPS.test(D.amount.slice(1));
+  return `${esc(D.amount || '0')} <span class="hint" style="font-size:18px">${CUR[S.cur] || S.cur}</span>` +
+    (expr ? `<div class="res">= ${money(calcExpr(D.amount))}</div>` : '');
+}
+function openSheet(id, pre) {
   const t = id && S.tx.find(x => x.id === id);
   D = t ? { ...t, amount: String(t.amount) }
         : { id: null, type: 'exp', amount: '', cat: null, date: today(), acc: S.accounts[0].id, note: '' };
+  if (pre) Object.assign(D, pre);
   drawSheet();
   $('#sheet').classList.add('on');
   if (tg && tg.BackButton) tg.BackButton.show();
@@ -244,7 +291,7 @@ function drawSheet() {
   $('#sheet-in').innerHTML = `<div class="grab"></div>
     <div class="seg"><button data-act="dtype" data-v="exp" class="${D.type === 'exp' ? 'on' : ''}">Расход</button>
       <button data-act="dtype" data-v="inc" class="${D.type === 'inc' ? 'on' : ''}">Доход</button></div>
-    <div class="disp">${esc(D.amount || '0')} <span class="hint" style="font-size:18px">${CUR[S.cur] || S.cur}</span></div>
+    <div class="disp">${dispHTML()}</div>
     <div class="cats">${S.cats[D.type].map(c => `<button data-act="dcat" data-v="${c.id}" class="${D.cat === c.id ? 'on' : ''}">
         <span>${c.e}</span>${esc(c.n)}</button>`).join('')}</div>
     <div class="card" style="margin:0">
@@ -252,14 +299,8 @@ function drawSheet() {
       <div class="fld"><span>Счёт</span><select data-d="acc">${S.accounts.map(x => `<option value="${x.id}" ${x.id === D.acc ? 'selected' : ''}>${esc(x.n)}</option>`).join('')}</select></div>
       <div class="fld"><span>Заметка</span><input data-d="note" value="${esc(D.note || '')}" placeholder="необязательно"></div>
     </div>
-    <div class="pad">
-      ${[1,2,3,4,5,6,7,8,9].map(n => `<button data-act="key" data-v="${n}">${n}</button>`).join('')}
-      <button data-act="key" data-v="+" class="op">+</button>
-      <button data-act="key" data-v="0">0</button>
-      <button data-act="key" data-v="." class="op">.</button>
-      <button data-act="key" data-v="-" class="op">−</button>
-      <button data-act="key" data-v="del" class="op">⌫</button>
-    </div>
+    <div class="pad">${KEYS.map(k => `<button data-act="key" data-v="${k}"
+      class="${k === 'del' ? 'del' : OPS.test(k) ? 'op' : ''}">${KEY_LABEL[k] || k}</button>`).join('')}</div>
     <button class="btn" data-act="dsave">${D.id ? 'Сохранить' : 'Добавить'}</button>
     ${D.id ? '<button class="btn dngr" data-act="ddel">Удалить операцию</button>' : ''}`;
 }
@@ -319,13 +360,12 @@ document.addEventListener('click', e => {
     },
     add() { buzz(); openSheet(null); },
     edit() { buzz(); openSheet(v); },
+    htype() { homeType = v; renderHome(); buzz(); },
     dtype() { D.type = v; D.cat = null; drawSheet(); buzz(); },
     dcat() { D.cat = v; drawSheet(); buzz(); },
     key() {
-      if (v === 'del') D.amount = D.amount.slice(0, -1);
-      else if (v === '.' && /\.\d*$/.test(D.amount.split(/[+-]/).pop())) return;
-      else D.amount += v;
-      $('.disp', $('#sheet-in')).innerHTML = `${esc(D.amount || '0')} <span class="hint" style="font-size:18px">${CUR[S.cur] || S.cur}</span>`;
+      D.amount = applyKey(D.amount, v);
+      $('.disp', $('#sheet-in')).innerHTML = dispHTML();
       buzz();
     },
     dsave: saveDraft,
@@ -365,6 +405,76 @@ document.addEventListener('click', e => {
 // закрыть шторку кликом по фону
 $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
 
+/* ---------- перетаскивание иконок ---------- */
+// категорию тащим на счёт или счёт на категорию — оба варианта дают операцию
+const validDrop = (a, b) => (a === 'cat' && b === 'acc') || (a === 'acc' && b === 'cat');
+const typeOfCat = id => S.cats.exp.some(c => c.id === id) ? 'exp' : 'inc';
+let G = null;                                  // текущее перетаскивание
+
+function tileAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  return el && el.closest('.drag');
+}
+function startGhost(el, x, y) {
+  const g = el.cloneNode(true);
+  g.className = 'ghost ' + (el.classList.contains('wal') ? 'wal' : 'tile');
+  const r = el.getBoundingClientRect();
+  g.style.width = r.width + 'px';
+  document.body.appendChild(g);
+  el.classList.add('dragging');
+  moveGhost(g, x, y, { width: r.width / 2 });
+  return g;
+}
+function moveGhost(g, x, y, r) {
+  g.style.transform = `translate(${x - (r ? r.width : 27)}px,${y - 27}px)`;
+}
+document.addEventListener('pointerdown', e => {
+  const el = e.target.closest('.drag');
+  if (!el || D) return;
+  G = { el, kind: el.dataset.kind, id: el.dataset.id, x: e.clientX, y: e.clientY, ready: false, ghost: null,
+        w: el.getBoundingClientRect().width / 2 };
+  // удержание 180 мс включает перетаскивание, быстрый свайп остаётся прокруткой
+  G.timer = setTimeout(() => { if (G) { G.ready = true; el.classList.add('hold'); buzz('medium'); } }, 180);
+});
+document.addEventListener('pointermove', e => {
+  if (!G) return;
+  if (!G.ready) {
+    if (Math.hypot(e.clientX - G.x, e.clientY - G.y) > 10) { clearTimeout(G.timer); G.el.classList.remove('hold'); G = null; }
+    return;
+  }
+  if (!G.ghost) G.ghost = startGhost(G.el, e.clientX, e.clientY);
+  moveGhost(G.ghost, e.clientX, e.clientY, { width: G.w });
+  const t = tileAt(e.clientX, e.clientY);
+  document.querySelectorAll('.over').forEach(n => n.classList.remove('over'));
+  if (t && validDrop(G.kind, t.dataset.kind)) t.classList.add('over');
+});
+document.addEventListener('pointerup', e => {
+  if (!G) return;
+  const g = G; G = null;
+  clearTimeout(g.timer);
+  g.el.classList.remove('hold', 'dragging');
+  if (g.ghost) g.ghost.remove();
+  document.querySelectorAll('.over').forEach(n => n.classList.remove('over'));
+  const t = g.ready && g.ghost && tileAt(e.clientX, e.clientY);
+  if (t && validDrop(g.kind, t.dataset.kind)) {
+    const cat = g.kind === 'cat' ? g.id : t.dataset.id;
+    const acc = g.kind === 'acc' ? g.id : t.dataset.id;
+    buzz('medium');
+    openSheet(null, { type: typeOfCat(cat), cat, acc });
+  } else if (!g.ghost) {                       // короткий тап по иконке — то же окно
+    if (g.kind === 'cat') openSheet(null, { type: typeOfCat(g.id), cat: g.id });
+    else openSheet(null, { acc: g.id });
+  }
+});
+document.addEventListener('pointercancel', () => {
+  if (!G) return;
+  clearTimeout(G.timer); G.el.classList.remove('hold', 'dragging');
+  if (G.ghost) G.ghost.remove();
+  G = null;
+});
+// пока тащим — страница не прокручивается
+document.addEventListener('touchmove', e => { if (G && G.ready) e.preventDefault(); }, { passive: false });
+
 // поля: черновик, лимиты, счета, валюта
 document.addEventListener('input', e => {
   const t = e.target;
@@ -398,6 +508,21 @@ if (location.search.includes('test=1')) {
   eq(calcExpr('20-4.25-1'), 14.75, 'вычитание');
   eq(calcExpr(''), 0, 'пусто');
   eq(calcExpr('7'), 7, 'одно число');
+  eq(calcExpr('2+3×4'), 14, 'умножение раньше сложения');
+  eq(calcExpr('10÷4'), 2.5, 'деление');
+  eq(calcExpr('10÷0'), 0, 'деление на ноль не ломает');
+  eq(calcExpr('100-2×3+6÷2'), 97, 'смешанный приоритет');
+  eq(calcExpr('12+'), 12, 'висящий оператор');
+  eq(calcExpr('3×'), 3, 'висящее умножение');
+  eq(applyKey('', '+'), '', 'оператор первым не вводится');
+  eq(applyKey('12', '+'), '12+', 'оператор после числа');
+  eq(applyKey('12+', '×'), '12×', 'оператор подряд заменяется');
+  eq(applyKey('12.5', '.'), '12.5', 'вторая точка не проходит');
+  eq(applyKey('12+', '.'), '12+0.', 'точка после оператора -> 0.');
+  eq(applyKey('', '.'), '0.', 'точка первой -> 0.');
+  eq(applyKey('12.5+3', '.'), '12.5+3.', 'точка во втором числе');
+  eq(applyKey('123', 'del'), '12', 'стирание');
+  eq(calcExpr(['1','2','+','3','×','4'].reduce(applyKey, '')), 15, 'полный набор с клавиатуры');
   const back = S;
   S = { ...load(), tx: [
     { id: 'a', ts: 1, type: 'exp', amount: 10, cat: 'c1', date: '2026-08-05', acc: 'main' },
@@ -410,6 +535,10 @@ if (location.search.includes('test=1')) {
   eq(balance(), 115, 'баланс = 100 + 30 - 15');
   eq(shiftPeriod('2026-01', -1), '2025-12', 'месяц назад');
   eq(shiftPeriod('2026-12', 1), '2027-01', 'месяц вперёд');
+  eq([validDrop('cat', 'acc'), validDrop('acc', 'cat')], [true, true], 'категория ↔ счёт');
+  eq([validDrop('cat', 'cat'), validDrop('acc', 'acc')], [false, false], 'одинаковые не соединяются');
+  eq(typeOfCat(S.cats.inc[0].id), 'inc', 'тип категории дохода');
+  eq(typeOfCat(S.cats.exp[0].id), 'exp', 'тип категории расхода');
   S = back;
   console.log('тесты выполнены — ошибок нет, если выше нет Assertion failed');
 }
