@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>Бюджет</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg:var(--tg-theme-bg-color,#0f1216);
+  --card:var(--tg-theme-secondary-bg-color,#1a1f27);
+  --text:var(--tg-theme-text-color,#fff);
+  --hint:var(--tg-theme-hint-color,#8b95a5);
+  --accent:var(--tg-theme-button-color,#4b7bec);
+  --line:rgba(128,140,160,.18);
+  --red:#ff5c5c; --green:#2fd07a;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overscroll-behavior:none}
+button,input,select{font:inherit;color:inherit}
+.screen{display:none;padding:14px 14px calc(110px + env(safe-area-inset-bottom))}
+.screen.on{display:block}
+.card{background:var(--card);border-radius:16px;padding:14px;margin-bottom:12px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.hint{color:var(--hint);font-size:13px}
+.h2{font-size:13px;color:var(--hint);text-transform:uppercase;letter-spacing:.6px;margin:18px 4px 8px}
+
+/* баланс */
+.bal{background:linear-gradient(135deg,#4b6bff,#8b5cf6);border-radius:20px;padding:18px;color:#fff}
+.bal .sum{font-size:32px;font-weight:700;letter-spacing:-.5px;margin-top:2px}
+.bal .lbl{opacity:.8;font-size:13px}
+.pair{display:flex;gap:10px;margin-top:14px}
+.pair>div{flex:1;background:rgba(255,255,255,.15);border-radius:12px;padding:8px 10px}
+.pair b{display:block;font-size:16px;margin-top:2px}
+
+/* операции */
+.tx{display:flex;align-items:center;gap:12px;padding:9px 0;cursor:pointer}
+.ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:19px;flex:none}
+.tx .nm{flex:1;min-width:0}
+.tx .nm div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.amt{font-weight:600;white-space:nowrap}
+.daysep{display:flex;justify-content:space-between;color:var(--hint);font-size:12px;padding:10px 0 2px;border-top:1px solid var(--line);margin-top:6px}
+.empty{text-align:center;color:var(--hint);padding:34px 10px}
+
+/* навигация */
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);
+    padding:8px 0 calc(8px + env(safe-area-inset-bottom));z-index:5}
+nav button{flex:1;background:none;border:0;color:var(--hint);display:grid;justify-items:center;gap:3px;font-size:10px;padding:2px}
+nav button.on{color:var(--accent)}
+nav .gap{flex:1}
+.fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(34px + env(safe-area-inset-bottom));
+     width:56px;height:56px;border-radius:50%;border:0;background:var(--accent);color:#fff;font-size:30px;line-height:1;
+     box-shadow:0 6px 20px rgba(0,0,0,.35);z-index:6}
+
+/* сегменты */
+.seg{display:flex;background:var(--card);border-radius:12px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:none;color:var(--hint);padding:8px;border-radius:10px;font-size:14px}
+.seg button.on{background:var(--accent);color:#fff;font-weight:600}
+
+/* графики */
+.donut{display:flex;align-items:center;gap:14px}
+.donut svg{width:132px;height:132px;flex:none;transform:rotate(-90deg)}
+.dc{position:relative;width:132px;height:132px;flex:none}
+.dc .mid{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.dc .mid b{font-size:17px}
+.bars{display:flex;align-items:flex-end;gap:3px;height:110px;margin-top:6px}
+.bars>div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px}
+.bars i{display:block;border-radius:3px 3px 0 0;background:var(--accent);min-height:2px}
+.bars i.g{background:var(--green)}
+.xlab{display:flex;gap:3px;color:var(--hint);font-size:9px;margin-top:4px}
+.xlab>div{flex:1;text-align:center;overflow:hidden}
+.legend{padding:4px 0}
+.legend .l{display:flex;align-items:center;gap:8px;padding:7px 0}
+.dot{width:10px;height:10px;border-radius:3px;flex:none}
+.bar{height:6px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;border-radius:4px;background:var(--accent)}
+
+/* формы */
+.fld{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--line)}
+.fld:last-child{border:0}
+.fld input,.fld select{background:none;border:0;text-align:right;flex:1;min-width:0;outline:none}
+.fld input[type=color]{max-width:34px;padding:0;height:26px}
+.btn{width:100%;border:0;border-radius:12px;padding:13px;background:var(--accent);color:#fff;font-weight:600;margin-top:10px}
+.btn.sec{background:var(--card);color:var(--text)}
+.btn.dngr{background:none;color:var(--red)}
+
+/* шторка */
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10;display:none}
+.sheet.on{display:block}
+.sheet .in{position:absolute;left:0;right:0;bottom:0;background:var(--bg);border-radius:20px 20px 0 0;
+  padding:10px 14px calc(14px + env(safe-area-inset-bottom));max-height:96%;overflow:auto}
+.grab{width:36px;height:4px;border-radius:2px;background:var(--line);margin:2px auto 10px}
+.disp{text-align:center;font-size:38px;font-weight:700;padding:6px 0;letter-spacing:-1px;word-break:break-all}
+.cats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}
+.cats button{background:var(--card);border:1.5px solid transparent;border-radius:14px;padding:9px 3px;display:grid;gap:3px;justify-items:center;font-size:10px;color:var(--hint)}
+.cats button.on{border-color:var(--accent);color:var(--text)}
+.cats span{font-size:21px}
+.pad{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:8px}
+.pad button{background:var(--card);border:0;border-radius:12px;padding:15px 0;font-size:21px;font-weight:500}
+.pad button.op{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<section id="s-home" class="screen on"></section>
+<section id="s-stats" class="screen"></section>
+<section id="s-budg" class="screen"></section>
+<section id="s-set" class="screen"></section>
+
+<button class="fab" data-act="add">+</button>
+<nav>
+  <button data-act="tab" data-v="home" class="on"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Главная</button>
+  <button data-act="tab" data-v="stats"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Статистика</button>
+  <div class="gap"></div>
+  <button data-act="tab" data-v="budg"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>Бюджеты</button>
+  <button data-act="tab" data-v="set"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1v.3a2 2 0 1 1-4 0V21a1.6 1.6 0 0 0-2.7-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 15a2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.2-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.3V4a2 2 0 1 1 4 0v.3a1.6 1.6 0 0 0 2.7 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.6 1.6 0 0 0 21 11a2 2 0 1 1 0 4z"/></svg>Ещё</button>
+</nav>
+
+<div class="sheet" id="sheet"><div class="in" id="sheet-in"></div></div>
+<script src="app.js"></script>
+</body>
+</html>
