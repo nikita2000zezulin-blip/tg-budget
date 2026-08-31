@@ -96,9 +96,31 @@ nav .gap{flex:1}
 .cats button{background:var(--card);border:1.5px solid transparent;border-radius:14px;padding:9px 3px;display:grid;gap:3px;justify-items:center;font-size:10px;color:var(--hint)}
 .cats button.on{border-color:var(--accent);color:var(--text)}
 .cats span{font-size:21px}
-.pad{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:8px}
-.pad button{background:var(--card);border:0;border-radius:12px;padding:15px 0;font-size:21px;font-weight:500}
-.pad button.op{color:var(--accent)}
+.pad{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:12px auto 0;max-width:340px}
+.pad button{background:var(--card);border:0;border-radius:50%;aspect-ratio:1;font-size:23px;font-weight:400;
+            display:grid;place-items:center;transition:background .1s}
+.pad button:active{background:var(--accent);color:#fff}
+.pad button.op{background:var(--accent);color:#fff;font-size:25px}
+.pad button.del{background:none;color:var(--hint);font-size:21px}
+.disp .res{color:var(--hint);font-size:16px;font-weight:400;letter-spacing:0}
+
+/* перетаскивание */
+#s-home{padding-bottom:calc(190px + env(safe-area-inset-bottom))}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.tile{display:grid;justify-items:center;gap:4px;font-size:10px;color:var(--hint);background:none;border:0;padding:6px 2px;line-height:1.15}
+.tile .i{width:54px;height:54px;border-radius:17px;display:grid;place-items:center;font-size:25px;transition:transform .12s}
+.tile.hold .i{transform:scale(1.15)}
+.dock{position:fixed;left:0;right:0;bottom:calc(70px + env(safe-area-inset-bottom));z-index:4;
+      display:flex;gap:8px;overflow-x:auto;padding:14px 12px 8px;
+      background:linear-gradient(to bottom,transparent,var(--bg) 40%)}
+.screen:not(.on) .dock{display:none}
+.wal{flex:none;min-width:128px;background:var(--card);border-radius:14px;padding:9px 12px;border:1.5px solid transparent;transition:transform .12s,border-color .12s}
+.wal b{display:block;font-size:13px}
+.wal span{font-size:12px;color:var(--hint)}
+.over{border-color:var(--accent)!important;transform:scale(1.06)}
+.ghost{position:fixed;left:0;top:0;z-index:50;pointer-events:none;opacity:.92}
+.ghost .i{box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.dragging{opacity:.3}
 </style>
 </head>
 <body>
